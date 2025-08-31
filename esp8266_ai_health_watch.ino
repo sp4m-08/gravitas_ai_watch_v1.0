@@ -54,7 +54,7 @@ const unsigned char heartBitmap[] PROGMEM = {
 void setup()
 {
   Serial.begin(115200);
-  Wire.begin(D2, D1);
+  Wire.begin(D2, D1);  //SCL D1, SDA D2
 
   oled.begin();
   oled.clearDisplay();
