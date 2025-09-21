@@ -1,6 +1,6 @@
 #include <Wire.h>
 #include "MAX30100_PulseOximeter.h"
-#include <Adafruit_BMP280.h>
+#include <Adafruit_BMP085.h>
 #include "OakOLED.h"
 #include <MPU6050.h>
 #include <ESP8266WiFi.h>
@@ -11,16 +11,16 @@
 #define REPORTING_PERIOD_MS 10000
 
 PulseOximeter pox;
-Adafruit_BMP280 bmp;
+Adafruit_BMP085 bmp;
 OakOLED oled;
 MPU6050 mpu;
 
 // WiFi credentials
-const char *ssid = "TESTESP";
-const char *password = "12345678";
+const char *ssid = "your-hotspot-name";         // Change credentials and put your own hotspot name
+const char *password = "your-hotspot-password"; // change to your own hostpot password
 
 // Backend server for AI queries
-const char *aiServer = "http://192.168.239.118:3000/ask-ai";
+const char *aiServer = "http://your-ip-address:3000/ask-ai"; // ip_address
 
 // NTP settings
 const char *ntpServer = "pool.ntp.org";
@@ -54,7 +54,7 @@ const unsigned char heartBitmap[] PROGMEM = {
 void setup()
 {
   Serial.begin(115200);
-  Wire.begin(D2, D1);  //SCL D1, SDA D2
+  Wire.begin(D2, D1); // SCL D1, SDA D2
 
   oled.begin();
   oled.clearDisplay();
@@ -84,10 +84,10 @@ void setup()
   pox.setIRLedCurrent(MAX30100_LED_CURR_7_6MA);
   pox.setOnBeatDetectedCallback(onBeatDetected);
 
-  if (!bmp.begin(0x76))
+  if (!bmp.begin())
   {
     oled.setCursor(0, 20);
-    oled.println("BMP280 Fail");
+    oled.println("BMP180 Fail");
     oled.display();
     while (1)
       ;
@@ -100,7 +100,8 @@ void setup()
     oled.setCursor(0, 30);
     oled.println("MPU6050 Fail");
     oled.display();
-    while (1);
+    while (1)
+      ;
   }
 
   oled.clearDisplay();
@@ -161,19 +162,20 @@ String getFormattedDate()
   return String(buffer);
 }
 
-void sendSensorDataToAI(float hr, float spo2, float temp, int steps, String timeStr)
+void sendSensorDataToAI(float hr, float spo2, float temp, float pressure, int steps, String timeStr)
 {
   if (WiFi.status() == WL_CONNECTED)
   {
     HTTPClient http;
     WiFiClient client;
-    http.begin(client, "http://192.168.239.118:3000/data");
+    http.begin(client, "http://your-ip-address:3000/data"); // ip address
     http.addHeader("Content-Type", "application/json");
 
     StaticJsonDocument<256> doc;
     doc["heartRate"] = hr;
     doc["spo2"] = spo2;
     doc["temperature"] = temp;
+    doc["pressure"] = pressure;
     doc["steps"] = steps;
     doc["time"] = timeStr;
 
@@ -248,10 +250,10 @@ void loop()
     float temp = bmp.readTemperature();
     float pressure = bmp.readPressure() / 100.0F;
 
-    if (bpm == 0.0)
-      bpm = 72.0;
-    if (spo2 == 0.0)
-      spo2 = 98.0;
+    // if (bpm == 0.0)
+    //  bpm = 72.0;
+    // if (spo2 == 0.0)
+    // spo2 = 98.0;
 
     oled.clearDisplay();
     oled.setCursor(0, 0);
@@ -278,29 +280,5 @@ void loop()
     oled.print(" ");
     oled.print(getFormattedDate());
     oled.drawBitmap(90, 0, heartBitmap, 28, 28, 1);
-
-    // 🔧 Adjust AI response display
-    if (lastAIResponse.length() > 0)
-    {
-      oled.setCursor(0, 60 - 8); // shift up
-      oled.setTextSize(1);
-      oled.print("AI: ");
-      oled.print(lastAIResponse.substring(0, 18));
-    }
-
-    oled.display();
-
-    String currentTime = getFormattedTime();
-    sendSensorDataToAI(bpm, spo2, temp, stepCount, currentTime);
-
-    if (Serial.available())
-    {
-      String userInput = Serial.readStringUntil('\n');
-      userInput.trim();
-      if (userInput.length() > 0)
-      {
-        askAI(userInput);
-      }
-    }
   }
 }
