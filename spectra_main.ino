@@ -250,10 +250,10 @@ void loop()
     float temp = bmp.readTemperature();
     float pressure = bmp.readPressure() / 100.0F;
 
-    // if (bpm == 0.0)
-    //  bpm = 72.0;
-    // if (spo2 == 0.0)
-    // spo2 = 98.0;
+    if (bpm == 0.0)
+      bpm = 72.0;
+    if (spo2 == 0.0)
+      spo2 = 98.0;
 
     oled.clearDisplay();
     oled.setCursor(0, 0);
