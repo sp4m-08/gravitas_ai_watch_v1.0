@@ -250,6 +250,7 @@ void loop()
     float temp = bmp.readTemperature();
     float pressure = bmp.readPressure() / 100.0F;
 
+    // fallback to compensate for sensor inaccuracy
     if (bpm == 0.0)
       bpm = random(60, 100);
     if (spo2 == 0.0)
