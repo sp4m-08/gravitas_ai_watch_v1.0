@@ -9,11 +9,11 @@
 #include <time.h>
 
 // OLED SPI pin mapping (for ESP8266)
-#define OLED_MOSI   D7  // D1 on OLED → SDA
-#define OLED_CLK    D5  // D0 on OLED → SCL
-#define OLED_DC     D3  // DC pin
-#define OLED_CS     D8  // CS pin
-#define OLED_RESET  D4  // RES pin
+#define OLED_MOSI D7  // D1 on OLED → SDA
+#define OLED_CLK D5   // D0 on OLED → SCL
+#define OLED_DC D3    // DC pin
+#define OLED_CS D8    // CS pin
+#define OLED_RESET D4 // RES pin
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
@@ -65,9 +65,11 @@ void setup()
   Serial.begin(115200);
   Wire.begin();
 
-  if (!oled.begin(SSD1306_SWITCHCAPVCC)) {
+  if (!oled.begin(SSD1306_SWITCHCAPVCC))
+  {
     Serial.println("SSD1306 allocation failed");
-    for (;;);
+    for (;;)
+      ;
   }
   oled.clearDisplay();
   oled.setTextSize(1);
@@ -129,6 +131,16 @@ String getFormattedTime()
   return String(buffer);
 }
 
+String getFormattedDate()
+{
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo))
+    return "Date N/A";
+  char buffer[20];
+  strftime(buffer, sizeof(buffer), "%d %b %Y", &timeinfo);
+  return String(buffer);
+}
+
 void askAI(String query)
 {
   if (WiFi.status() == WL_CONNECTED)
@@ -172,16 +184,6 @@ void askAI(String query)
   }
 }
 
-String getFormattedDate()
-{
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo))
-    return "Date N/A";
-  char buffer[20];
-  strftime(buffer, sizeof(buffer), "%d %b %Y", &timeinfo);
-  return String(buffer);
-}
-
 void sendSensorDataToAI(float hr, float spo2, float temp, float pressure, int steps, String timeStr)
 {
   if (WiFi.status() == WL_CONNECTED)
@@ -223,16 +225,17 @@ void loop()
   static unsigned long lastPostUpdate = 0;
   unsigned long currentMillis = millis();
 
-  
   float bpm = pox.getHeartRate();
   float spo2 = pox.getSpO2();
-  float temp = random(20, 35);        // °C
-  float pressure = random(950, 1050); // hPa
 
-  if (bpm == 0.0) bpm = random(60, 100);
-  if (spo2 == 0.0) spo2 = random(95, 100);
+  // fallback for sensor inaccuracy
+  float temp = random(20, 35);
+  float pressure = random(950, 1050);
+  if (bpm == 0.0)
+    bpm = random(60, 100);
+  if (spo2 == 0.0)
+    spo2 = random(95, 100);
 
-  // Update OLED every 1s
   if (currentMillis - lastDisplayUpdate > 1000)
   {
     lastDisplayUpdate = currentMillis;
@@ -267,8 +270,7 @@ void loop()
     oled.display();
   }
 
-  // Post data every 10s
-  if (currentMillis - lastPostUpdate > 10000)
+  if (currentMillis - lastPostUpdate > 1000)
   {
     lastPostUpdate = currentMillis;
     sendSensorDataToAI(bpm, spo2, temp, pressure, stepCount, getFormattedTime());
