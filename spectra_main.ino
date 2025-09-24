@@ -9,28 +9,28 @@
 #include <time.h>
 
 // OLED SPI pin mapping (for ESP8266)
-#define OLED_MOSI D7  // D1 on OLED → SDA
-#define OLED_CLK D5   // D0 on OLED → SCL
-#define OLED_DC D3    // DC pin
-#define OLED_CS D8    // CS pin
-#define OLED_RESET D4 // RES pin
+#define OLED_MOSI   D7  // D1 on OLED → SDA
+#define OLED_CLK    D5  // D0 on OLED → SCL
+#define OLED_DC     D3  // DC pin
+#define OLED_CS     D8  // CS pin
+#define OLED_RESET  D4  // RES pin
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 
 Adafruit_SSD1306 oled(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, OLED_DC, OLED_RESET, OLED_CS);
 
-#define REPORTING_PERIOD_MS 10000
-
 PulseOximeter pox;
 MPU6050 mpu;
 
 // WiFi credentials
-const char *ssid = "your-hotspot-name";
-const char *password = "your-hotspot-password";
+const char *ssid = "TESTESP";
+const char *password = "12345678";
 
+// Backend server
+const char *serverDataEndpoint = "http://192.168.3.118:3000/data";
 // Backend server for AI queries
-const char *aiServer = "http://your-ip-address/ask-ai";
+const char *aiServer = "http://192.168.3.118:3000/ask-ai";
 
 // NTP settings
 const char *ntpServer = "pool.ntp.org";
@@ -43,7 +43,6 @@ unsigned long lastStepTime = 0;
 const unsigned long stepDebounceTime = 300;
 int stepCount = 0;
 
-// Store AI response
 String lastAIResponse = "";
 
 void onBeatDetected()
@@ -64,13 +63,11 @@ const unsigned char heartBitmap[] PROGMEM = {
 void setup()
 {
   Serial.begin(115200);
-  Wire.begin(); // SCL D1, SDA D2
+  Wire.begin();
 
-  if (!oled.begin(SSD1306_SWITCHCAPVCC))
-  {
+  if (!oled.begin(SSD1306_SWITCHCAPVCC)) {
     Serial.println("SSD1306 allocation failed");
-    for (;;)
-      ;
+    for (;;);
   }
   oled.clearDisplay();
   oled.setTextSize(1);
@@ -85,30 +82,9 @@ void setup()
     delay(500);
     Serial.print(".");
   }
+  Serial.println("\nWiFi connected!");
 
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-
-  if (!pox.begin())
-  {
-    oled.setCursor(0, 10);
-    oled.println("MAX30100 Fail");
-    oled.display();
-    while (1)
-      ;
-  }
-  pox.setIRLedCurrent(MAX30100_LED_CURR_7_6MA);
-  pox.setOnBeatDetectedCallback(onBeatDetected);
-
-  // MPU6050 initialization (still checked)
-  mpu.initialize();
-  if (!mpu.testConnection())
-  {
-    oled.setCursor(0, 30);
-    oled.println("MPU6050 Fail");
-    oled.display();
-    while (1)
-      ;
-  }
 }
 
 void detectStep()
@@ -151,44 +127,6 @@ String getFormattedTime()
   char buffer[16];
   strftime(buffer, sizeof(buffer), "%H:%M:%S", &timeinfo);
   return String(buffer);
-}
-
-String getFormattedDate()
-{
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo))
-    return "Date N/A";
-  char buffer[20];
-  strftime(buffer, sizeof(buffer), "%d %b %Y", &timeinfo);
-  return String(buffer);
-}
-
-void sendSensorDataToAI(float hr, float spo2, float temp, float pressure, int steps, String timeStr)
-{
-  if (WiFi.status() == WL_CONNECTED)
-  {
-    HTTPClient http;
-    WiFiClient client;
-    http.begin(client, "http://192.168.3.118:3000/data");
-    http.addHeader("Content-Type", "application/json");
-
-    StaticJsonDocument<256> doc;
-    doc["heartRate"] = hr;
-    doc["spo2"] = spo2;
-    doc["temperature"] = temp;
-    doc["pressure"] = pressure;
-    doc["steps"] = steps;
-    doc["time"] = timeStr;
-
-    String requestBody;
-    serializeJson(doc, requestBody);
-
-    int code = http.POST(requestBody);
-    Serial.print("Data POST status: ");
-    Serial.println(code);
-
-    http.end();
-  }
 }
 
 void askAI(String query)
@@ -234,29 +172,70 @@ void askAI(String query)
   }
 }
 
+String getFormattedDate()
+{
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo))
+    return "Date N/A";
+  char buffer[20];
+  strftime(buffer, sizeof(buffer), "%d %b %Y", &timeinfo);
+  return String(buffer);
+}
+
+void sendSensorDataToAI(float hr, float spo2, float temp, float pressure, int steps, String timeStr)
+{
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    HTTPClient http;
+    WiFiClient client;
+    http.begin(client, serverDataEndpoint);
+    http.addHeader("Content-Type", "application/json");
+
+    StaticJsonDocument<256> doc;
+    doc["heartRate"] = hr;
+    doc["spo2"] = spo2;
+    doc["temperature"] = temp;
+    doc["pressure"] = pressure;
+    doc["steps"] = steps;
+    doc["time"] = timeStr;
+
+    String requestBody;
+    serializeJson(doc, requestBody);
+
+    int code = http.POST(requestBody);
+    Serial.print("Data POST status: ");
+    Serial.println(code);
+
+    http.end();
+  }
+  else
+  {
+    Serial.println("WiFi not connected, skipping POST");
+  }
+}
+
 void loop()
 {
   pox.update();
   detectStep();
 
   static unsigned long lastDisplayUpdate = 0;
+  static unsigned long lastPostUpdate = 0;
   unsigned long currentMillis = millis();
 
+  
+  float bpm = pox.getHeartRate();
+  float spo2 = pox.getSpO2();
+  float temp = random(20, 35);        // °C
+  float pressure = random(950, 1050); // hPa
+
+  if (bpm == 0.0) bpm = random(60, 100);
+  if (spo2 == 0.0) spo2 = random(95, 100);
+
+  // Update OLED every 1s
   if (currentMillis - lastDisplayUpdate > 1000)
   {
     lastDisplayUpdate = currentMillis;
-
-    float bpm = pox.getHeartRate();
-    float spo2 = pox.getSpO2();
-
-    // fallback for sensor inaccuracy
-    float temp = random(20, 35);
-    float pressure = random(950, 1050);
-
-    if (bpm == 0.0)
-      bpm = random(60, 100);
-    if (spo2 == 0.0)
-      spo2 = random(95, 100);
 
     oled.clearDisplay();
     oled.setTextSize(1);
@@ -287,10 +266,11 @@ void loop()
     oled.drawBitmap(90, 0, heartBitmap, 28, 28, SSD1306_WHITE);
     oled.display();
   }
-  // posting our data to the web server
-  if (currentMillis - lastDisplayUpdate > 1000)
+
+  // Post data every 10s
+  if (currentMillis - lastPostUpdate > 10000)
   {
-    lastDisplayUpdate = currentMillis;
+    lastPostUpdate = currentMillis;
     sendSensorDataToAI(bpm, spo2, temp, pressure, stepCount, getFormattedTime());
   }
 }
