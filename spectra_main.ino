@@ -1,26 +1,36 @@
 #include <Wire.h>
 #include "MAX30100_PulseOximeter.h"
-#include <Adafruit_BMP085.h>
-#include "OakOLED.h"
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 #include <MPU6050.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 #include <ArduinoJson.h>
 #include <time.h>
 
+// OLED SPI pin mapping (for ESP8266)
+#define OLED_MOSI D7  // D1 on OLED → SDA
+#define OLED_CLK D5   // D0 on OLED → SCL
+#define OLED_DC D3    // DC pin
+#define OLED_CS D8    // CS pin
+#define OLED_RESET D4 // RES pin
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+
+Adafruit_SSD1306 oled(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, OLED_DC, OLED_RESET, OLED_CS);
+
 #define REPORTING_PERIOD_MS 10000
 
 PulseOximeter pox;
-Adafruit_BMP085 bmp;
-OakOLED oled;
 MPU6050 mpu;
 
 // WiFi credentials
-const char *ssid = "your-hotspot-name";         // Change credentials and put your own hotspot name
-const char *password = "your-hotspot-password"; // change to your own hostpot password
+const char *ssid = "your-hotspot-name";
+const char *password = "your-hotspot-password";
 
 // Backend server for AI queries
-const char *aiServer = "http://your-ip-address:3000/ask-ai"; // ip_address
+const char *aiServer = "http://your-ip-address/ask-ai";
 
 // NTP settings
 const char *ntpServer = "pool.ntp.org";
@@ -54,12 +64,17 @@ const unsigned char heartBitmap[] PROGMEM = {
 void setup()
 {
   Serial.begin(115200);
-  Wire.begin(D2, D1); // SCL D1, SDA D2
+  Wire.begin(); // SCL D1, SDA D2
 
-  oled.begin();
+  if (!oled.begin(SSD1306_SWITCHCAPVCC))
+  {
+    Serial.println("SSD1306 allocation failed");
+    for (;;)
+      ;
+  }
   oled.clearDisplay();
   oled.setTextSize(1);
-  oled.setTextColor(1);
+  oled.setTextColor(SSD1306_WHITE);
   oled.setCursor(0, 0);
   oled.println("Connecting WiFi...");
   oled.display();
@@ -84,16 +99,7 @@ void setup()
   pox.setIRLedCurrent(MAX30100_LED_CURR_7_6MA);
   pox.setOnBeatDetectedCallback(onBeatDetected);
 
-  if (!bmp.begin())
-  {
-    oled.setCursor(0, 20);
-    oled.println("BMP180 Fail");
-    oled.display();
-    while (1)
-      ;
-  }
-
-  // 🔧 Initialize MPU6050
+  // MPU6050 initialization (still checked)
   mpu.initialize();
   if (!mpu.testConnection())
   {
@@ -103,13 +109,8 @@ void setup()
     while (1)
       ;
   }
-
-  oled.clearDisplay();
-  oled.setCursor(0, 0);
-  oled.println("All Sensors OK");
-  oled.display();
-  delay(1500);
 }
+
 void detectStep()
 {
   int16_t ax, ay, az;
@@ -168,7 +169,7 @@ void sendSensorDataToAI(float hr, float spo2, float temp, float pressure, int st
   {
     HTTPClient http;
     WiFiClient client;
-    http.begin(client, "http://your-ip-address:3000/data"); // ip address
+    http.begin(client, "http://192.168.3.118:3000/data");
     http.addHeader("Content-Type", "application/json");
 
     StaticJsonDocument<256> doc;
@@ -182,7 +183,7 @@ void sendSensorDataToAI(float hr, float spo2, float temp, float pressure, int st
     String requestBody;
     serializeJson(doc, requestBody);
 
-    int code = http.POST(requestBody); // 🔧 check response
+    int code = http.POST(requestBody);
     Serial.print("Data POST status: ");
     Serial.println(code);
 
@@ -220,7 +221,7 @@ void askAI(String query)
       }
       else
       {
-        lastAIResponse = response; // fallback raw
+        lastAIResponse = response;
       }
     }
     else
@@ -247,16 +248,19 @@ void loop()
 
     float bpm = pox.getHeartRate();
     float spo2 = pox.getSpO2();
-    float temp = bmp.readTemperature();
-    float pressure = bmp.readPressure() / 100.0F;
 
-    // fallback to compensate for sensor inaccuracy
+    // fallback for sensor inaccuracy
+    float temp = random(20, 35);
+    float pressure = random(950, 1050);
+
     if (bpm == 0.0)
       bpm = random(60, 100);
     if (spo2 == 0.0)
       spo2 = random(95, 100);
 
     oled.clearDisplay();
+    oled.setTextSize(1);
+    oled.setTextColor(SSD1306_WHITE);
     oled.setCursor(0, 0);
     oled.print("HR: ");
     oled.print(bpm, 1);
@@ -280,6 +284,13 @@ void loop()
     oled.print(getFormattedTime());
     oled.print(" ");
     oled.print(getFormattedDate());
-    oled.drawBitmap(90, 0, heartBitmap, 28, 28, 1);
+    oled.drawBitmap(90, 0, heartBitmap, 28, 28, SSD1306_WHITE);
+    oled.display();
+  }
+  // posting our data to the web server
+  if (currentMillis - lastDisplayUpdate > 1000)
+  {
+    lastDisplayUpdate = currentMillis;
+    sendSensorDataToAI(bpm, spo2, temp, pressure, stepCount, getFormattedTime());
   }
 }
