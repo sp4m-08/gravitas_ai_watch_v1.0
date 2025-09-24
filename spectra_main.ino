@@ -24,13 +24,13 @@ PulseOximeter pox;
 MPU6050 mpu;
 
 // WiFi credentials
-const char *ssid = "TESTESP";
-const char *password = "12345678";
+const char *ssid = "your-hotspot-name";
+const char *password = "your-hotspot-password";
 
 // Backend server
-const char *serverDataEndpoint = "http://192.168.3.118:3000/data";
+const char *serverDataEndpoint = "http://your-ip-address:3000/data";
 // Backend server for AI queries
-const char *aiServer = "http://192.168.3.118:3000/ask-ai";
+const char *aiServer = "http://your-ip-address:3000/ask-ai";
 
 // NTP settings
 const char *ntpServer = "pool.ntp.org";
