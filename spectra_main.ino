@@ -71,6 +71,11 @@ void setup()
     for (;;)
       ;
   }
+  mpu.initialize();
+  if (!mpu.testConnection()) {
+    Serial.println("MPU6050 connection failed!");
+    while (1);
+  }
   
   oled.clearDisplay();
   oled.setTextSize(1);
