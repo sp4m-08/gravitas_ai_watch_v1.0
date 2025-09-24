@@ -71,6 +71,7 @@ void setup()
     for (;;)
       ;
   }
+  
   oled.clearDisplay();
   oled.setTextSize(1);
   oled.setTextColor(SSD1306_WHITE);
